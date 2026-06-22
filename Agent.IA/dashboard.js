@@ -499,7 +499,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(erro => console.error("Erro na edicao:", erro));
     });
 
-    // --- 10. INTEGRAÇÃO COGNITIVA DO CHAT ---
+   // --- 10. INTEGRAÇÃO COGNITIVA DO CHAT (VIA GEMINI IA) ---
     const formChat = document.getElementById('form-chat');
     const inputChat = document.getElementById('input-chat');
     const chatWindow = document.getElementById('chat-window');
@@ -509,72 +509,61 @@ document.addEventListener('DOMContentLoaded', function() {
         const mensagemUsuario = inputChat.value.trim();
         if (!mensagemUsuario) return;
 
+        // 1. Mostrar a mensagem do usuário na tela
         const divUser = document.createElement('div');
         divUser.className = 'chat-message user-message mb-3 text-end';
         divUser.innerHTML = `<div class="bg-white border p-3 rounded-3 shadow-sm d-inline-block text-start">${mensagemUsuario}</div>`;
         chatWindow.appendChild(divUser);
+        
+        // 2. Limpar o input e rolar o chat para baixo
         inputChat.value = '';
         chatWindow.scrollTop = chatWindow.scrollHeight;
 
-        fetch('https://agentia-api.onrender.com/api/chat/processar', {
+        // 3. Mostrar mensagem de "Pensando..." da IA
+        const idMensagemPensando = 'msg-pensando-' + Date.now();
+        const divIaPensando = document.createElement('div');
+        divIaPensando.className = 'chat-message ia-message mb-3';
+        divIaPensando.id = idMensagemPensando;
+        divIaPensando.innerHTML = `<div class="bg-primary text-white p-3 rounded-3 shadow-sm d-inline-block opacity-75"><i class="bi bi-hourglass-split me-2 spinner-border spinner-border-sm" role="status"></i>Processando com Inteligência Artificial...</div>`;
+        chatWindow.appendChild(divIaPensando);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+
+        // 4. Enviar a frase natural direta para a nova rota do Java
+        fetch(`https://agentia-api.onrender.com/api/compromissos/cadastrar-ia/${usuarioId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mensagem: mensagemUsuario })
+            body: JSON.stringify({ texto: mensagemUsuario })
         })
-        .then(res => res.json())
-        .then(async dados => {
-            if (!dados.endereco) {
-                const divIa = document.createElement('div');
-                divIa.className = 'chat-message ia-message mb-3';
-                divIa.innerHTML = `<div class="bg-primary text-white p-3 rounded-3 shadow-sm d-inline-block">Não identifiquei o endereço. Indique-o usando 'em', 'no' ou 'na'.</div>`;
-                chatWindow.appendChild(divIa);
-                return;
+        .then(async resposta => {
+            // Remove a mensagem de "Pensando..."
+            document.getElementById(idMensagemPensando).remove();
+
+            const divIaFinal = document.createElement('div');
+            divIaFinal.className = 'chat-message ia-message mb-3';
+
+            if (resposta.ok) {
+                // Sucesso: A IA entendeu, gerou o JSON e o Java salvou!
+                divIaFinal.innerHTML = `<div class="bg-success text-white p-3 rounded-3 shadow-sm d-inline-block"><i class="bi bi-check-circle-fill me-2"></i>Compromisso identificado e agendado com sucesso! Já atualizei sua lista.</div>`;
+                chatWindow.appendChild(divIaFinal);
+                
+                // Recarrega a lista lateral para o usuário ver o novo agendamento
+                carregarCompromissos();
+            } else {
+                // Erro: A IA pode não ter encontrado todos os dados na frase (ex: faltou a hora)
+                const textoErro = await resposta.text();
+                divIaFinal.innerHTML = `<div class="bg-danger text-white p-3 rounded-3 shadow-sm d-inline-block"><i class="bi bi-exclamation-triangle-fill me-2"></i>Ops, não consegui agendar. ${textoErro} <br><small>Dica: Tente incluir o título, a data, a hora e o local na frase.</small></div>`;
+                chatWindow.appendChild(divIaFinal);
             }
-
-            try {
-                let ruaBusca = dados.endereco.trim();
-                let numeroExtraido = "";
-                const ultimoEspaco = ruaBusca.lastIndexOf(' ');
-                if (ultimoEspaco !== -1) {
-                    const possivelNumero = ruaBusca.substring(ultimoEspaco + 1);
-                    if (/^\d+$/.test(possivelNumero)) {
-                        numeroExtraido = possivelNumero;
-                        ruaBusca = ruaBusca.substring(0, ultimoEspaco).trim();
-                    }
-                }
-
-                const urlMapa = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(ruaBusca + ", Londrina, PR")}&limit=1&email=contato.agentia@app.com`;
-                const resMapa = await fetch(urlMapa, { headers: { 'Accept': 'application/json', 'Accept-Language': 'pt-BR' } });
-                const locais = await resMapa.json();
-
-                if (!locais || locais.length === 0) return;
-
-                const local = locais[0];
-                let enderecoLimpo = local.display_name.split(',').slice(0, 3).join(',').trim();
-                if (numeroExtraido) enderecoLimpo += ", Nº " + numeroExtraido;
-
-                const novoCompromisso = {
-                    titulo: dados.titulo,
-                    endereco: enderecoLimpo,
-                    dataHora: `${dados.data}T${dados.hora}:00`,
-                    latitude: parseFloat(local.lat),
-                    longitude: parseFloat(local.lon)
-                };
-
-                const resSalvar = await fetch(`https://agentia-api.onrender.com/api/compromissos/cadastrar/${usuarioId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(novoCompromisso)
-                });
-
-                if (resSalvar.ok) {
-                    const divIa = document.createElement('div');
-                    divIa.className = 'chat-message ia-message mb-3';
-                    divIa.innerHTML = `<div class="bg-primary text-white p-3 rounded-3 shadow-sm d-inline-block">Agendado com sucesso via assistente!</div>`;
-                    chatWindow.appendChild(divIa);
-                    carregarCompromissos();
-                }
-            } catch (e) { console.error(e); }
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        })
+        .catch(erro => {
+            document.getElementById(idMensagemPensando).remove();
+            console.error("Erro na comunicação com a IA:", erro);
+            const divIaErro = document.createElement('div');
+            divIaErro.className = 'chat-message ia-message mb-3';
+            divIaErro.innerHTML = `<div class="bg-danger text-white p-3 rounded-3 shadow-sm d-inline-block">Erro de conexão com o servidor. Tente novamente em instantes.</div>`;
+            chatWindow.appendChild(divIaErro);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         });
     });
 
