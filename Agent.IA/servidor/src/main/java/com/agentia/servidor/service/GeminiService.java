@@ -22,7 +22,7 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+       String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey;
 
         // Injeta a data atual no prompt para a IA conseguir calcular "amanhã", "sexta-feira", etc.
         String dataHoje = LocalDate.now().toString();
