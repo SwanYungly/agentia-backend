@@ -1,0 +1,209 @@
+:root {
+    --cor-roxa-principal: #6f42c1;     
+    --cor-roxa-hover: #59339d;         
+}
+
+.custom-bg {
+    background: linear-gradient(135deg, #fdfbfb 0%, #ebe4f5 100%);
+}
+
+.text-primary {
+    color: var(--cor-roxa-principal) !important;
+}
+
+.bg-primary {
+    background-color: var(--cor-roxa-principal) !important;
+}
+
+.btn-primary, .btn-outline-primary {
+    --bs-btn-color: var(--cor-roxa-principal);
+    --bs-btn-bg: transparent; 
+    --bs-btn-border-color: var(--cor-roxa-principal);
+    
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: var(--cor-roxa-principal);
+    --bs-btn-hover-border-color: var(--cor-roxa-principal);
+    
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: var(--cor-roxa-hover);
+    --bs-btn-active-border-color: var(--cor-roxa-hover);
+}
+
+.btn-link, a {
+    color: var(--cor-roxa-principal);
+}
+.btn-link:hover, a:hover {
+    color: var(--cor-roxa-hover);
+}
+
+.form-control:focus {
+    border-color: var(--cor-roxa-principal);
+    box-shadow: 0 0 0 0.25rem rgba(111, 66, 193, 0.25);
+}
+
+.custom-card {
+    border: none;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.brand-title {
+    letter-spacing: -1px;
+}
+
+.form-content {
+    transition: opacity 0.4s ease-in-out;
+    opacity: 1;
+}
+
+.form-content.hidden {
+    display: none;
+    opacity: 0;
+}
+
+.btn-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(111, 66, 193, 0.35); 
+}
+
+.chat-window {
+    scrollbar-width: thin; 
+}
+
+.ia-message > div {
+    border-bottom-left-radius: 0 !important;
+}
+
+.user-message > div {
+    border-bottom-right-radius: 0 !important;
+    background-color: #f8f9fa !important;
+}
+
+.form-check-input:checked {
+    background-color: var(--cor-roxa-principal);
+    border-color: var(--cor-roxa-principal);
+}
+
+.form-check-input:focus {
+    border-color: var(--cor-roxa-principal);
+    box-shadow: 0 0 0 0.25rem rgba(111, 66, 193, 0.25);
+}
+
+.theme-toggle-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    z-index: 1050;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease;
+}
+
+.theme-toggle-btn:hover {
+    transform: scale(1.1);
+}
+
+/* CAIXA DE DESTAQUE NO MODO CLARO */
+.caixa-destaque {
+    background-color: #f8f9fa;
+}
+
+
+/* ==========================================
+   MODO ESCURO (DARK THEME)
+   ========================================== */
+
+body[data-theme="dark"] {
+    background: #121212 !important;
+    color: #e0e0e0;
+    
+    --cor-roxa-principal: #b388ff; 
+    --cor-roxa-hover: #d1b3ff;
+}
+
+/* Escurece os cartões e janelas */
+[data-theme="dark"] .custom-card, 
+[data-theme="dark"] .card,
+[data-theme="dark"] .modal-content {
+    background-color: #1e1e1e !important;
+    border: 1px solid #333 !important;
+}
+
+[data-theme="dark"] .card-header {
+    background-color: #1e1e1e !important;
+}
+
+/* Inputs e Botões Secundários */
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .btn-outline-secondary {
+    background-color: #2d2d2d !important;
+    border-color: #444 !important;
+    color: #fff !important;
+}
+
+/* Correção de contraste para o texto de preenchimento (Placeholder) */
+[data-theme="dark"] .form-control::placeholder {
+    color: #bbbbbb !important;
+    opacity: 1;
+}
+
+/* Correção para o fundo amarelo do preenchimento automático do navegador */
+[data-theme="dark"] input:-webkit-autofill,
+[data-theme="dark"] input:-webkit-autofill:hover, 
+[data-theme="dark"] input:-webkit-autofill:focus, 
+[data-theme="dark"] input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #2d2d2d inset !important;
+    -webkit-text-fill-color: #fff !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+[data-theme="dark"] .text-secondary, 
+[data-theme="dark"] .text-muted,
+[data-theme="dark"] .form-label {
+    color: #aaaaaa !important;
+}
+
+/* Lista de Compromissos */
+[data-theme="dark"] .list-group-item {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border-color: #333;
+}
+
+/* Balão de mensagem do usuário no Chat */
+[data-theme="dark"] .user-message > div {
+    background-color: #2d2d2d !important;
+    color: #e0e0e0;
+    border-color: #444 !important;
+}
+
+/* Fundo da janela do Chat */
+[data-theme="dark"] .chat-window {
+    background-color: #121212 !important;
+    border-color: #333 !important;
+}
+
+/* Barras de rolagem (Scrollbar) no Modo Escuro */
+[data-theme="dark"] .chat-window::-webkit-scrollbar-track {
+    background: #1e1e1e; 
+}
+[data-theme="dark"] .chat-window::-webkit-scrollbar-thumb {
+    background: #444; 
+    border-radius: 4px;
+}
+
+/* CAIXA DE DESTAQUE NO MODO ESCURO */
+[data-theme="dark"] .caixa-destaque {
+    background-color: #2d2d2d !important;
+    border-color: #444 !important;
+}
