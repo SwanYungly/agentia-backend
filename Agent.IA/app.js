@@ -69,7 +69,7 @@ document.getElementById('form-cadastro').addEventListener('submit', function(eve
         aceitouTermosLgpd: aceitouTermos
     };
 
-    fetch('http://localhost:8080/api/usuarios/cadastrar', {
+    fetch('https://agentia-api.onrender.com/api/usuarios/cadastrar', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -102,7 +102,7 @@ document.getElementById('form-login').addEventListener('submit', function(evento
         senha: senhaInput
     };
 
-    fetch('http://localhost:8080/api/usuarios/login', {
+    fetch('https://agentia-api.onrender.com/api/usuarios/login', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

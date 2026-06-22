@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
             "Remover Compromisso", 
             "Tem certeza que deseja remover este compromisso de sua agenda?", 
             () => {
-                fetch(`http://localhost:8080/api/compromissos/excluir/${id}`, {
+                fetch(`https://agentia-api.onrender.com/api/compromissos/excluir/${id}`, {
                     method: 'DELETE'
                 })
                 .then(resposta => {
@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 6. CARREGAR E EXIBIR A AGENDA NO DASHBOARD ---
     function carregarCompromissos() {
-        fetch(`http://localhost:8080/api/compromissos/listar/${usuarioId}`)
+        fetch(`https://agentia-api.onrender.com/api/compromissos/listar/${usuarioId}`)
         .then(resposta => resposta.json())
         .then(dados => {
             listaCompromissosLocal = dados; 
@@ -449,7 +449,7 @@ document.addEventListener('DOMContentLoaded', function() {
             longitude: lonSelecionada
         };
 
-        fetch(`http://localhost:8080/api/compromissos/cadastrar/${usuarioId}`, {
+        fetch(`https://agentia-api.onrender.com/api/compromissos/cadastrar/${usuarioId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(novoCompromisso)
@@ -482,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function() {
             longitude: lonSelecionada
         };
 
-        fetch(`http://localhost:8080/api/compromissos/editar/${idCompromissoSelecionadoParaEdicao}`, {
+        fetch(`https://agentia-api.onrender.com/api/compromissos/editar/${idCompromissoSelecionadoParaEdicao}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(compromissoAtualizado)
@@ -516,7 +516,7 @@ document.addEventListener('DOMContentLoaded', function() {
         inputChat.value = '';
         chatWindow.scrollTop = chatWindow.scrollHeight;
 
-        fetch('http://localhost:8080/api/chat/processar', {
+        fetch('https://agentia-api.onrender.com/api/chat/processar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mensagem: mensagemUsuario })
@@ -561,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     longitude: parseFloat(local.lon)
                 };
 
-                const resSalvar = await fetch(`http://localhost:8080/api/compromissos/cadastrar/${usuarioId}`, {
+                const resSalvar = await fetch(`https://agentia-api.onrender.com/api/compromissos/cadastrar/${usuarioId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(novoCompromisso)
