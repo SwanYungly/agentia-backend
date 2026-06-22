@@ -22,23 +22,23 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-       String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey; 
+        // Rota atualizada para o modelo universal gemini-pro
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey;
 
-        // Injeta a data atual no prompt para a IA conseguir calcular "amanhã", "sexta-feira", etc.
         String dataHoje = LocalDate.now().toString();
 
-        String instrucao = "Hoje é dia " + dataHoje + ". Você é um extrator de dados de agendas. " +
-                "Analise o texto do usuário e retorne ESTRITAMENTE um objeto JSON válido. " +
-                "Não inclua crases (```json), nem texto adicional. " +
+        // Instrucoes sem acentos para evitar problemas de encoding
+        String instrucao = "Hoje e dia " + dataHoje + ". Voce e um extrator de dados de agendas. " +
+                "Analise o texto do usuario e retorne ESTRITAMENTE um objeto JSON valido. " +
+                "Nao inclua crases (```json), nem texto adicional. " +
                 "O JSON deve ter exatamente estas chaves: " +
                 "'titulo' (string), 'data' (formato YYYY-MM-DD), 'horario' (formato HH:MM), 'local' (string). " +
-                "Se alguma informação faltar, deixe o valor como null. " +
-                "Texto do usuário: " + textoUsuario;
+                "Se alguma informacao faltar, deixe o valor como null. " +
+                "Texto do usuario: " + textoUsuario;
 
         try {
             ObjectMapper mapper = new ObjectMapper();
             
-            // Construção segura do JSON de envio (protege contra aspas e acentos no texto do usuário)
             Map<String, Object> part = new HashMap<>();
             part.put("text", instrucao);
             
@@ -56,23 +56,19 @@ public class GeminiService {
             HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
             RestTemplate restTemplate = new RestTemplate();
 
-            // Dispara para os servidores do Google
             ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
             
-            // Navega na árvore do JSON gigante do Google e extrai apenas a resposta em texto
             JsonNode rootNode = mapper.readTree(response.getBody());
             String textoPuroIA = rootNode.path("candidates").get(0)
                                          .path("content")
                                          .path("parts").get(0)
                                          .path("text").asText();
 
-            // Remove marcações de Markdown caso a IA ainda tente enviar formatação
             textoPuroIA = textoPuroIA.replace("```json", "").replace("```", "").trim();
 
             return textoPuroIA;
 
         } catch (Exception e) {
-            // Se falhar de novo, esse erro exato aparecerá na aba "Logs" do Render para nos ajudar
             System.out.println("Erro critico na integracao com Gemini: " + e.getMessage());
             return null;
         }
