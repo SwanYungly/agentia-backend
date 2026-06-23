@@ -23,7 +23,9 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+        // 1. Atualizado para o modelo 2.5-flash, pois as versões 1.5 foram aposentadas pelo Google.
+        // Note que a URL agora está limpa, sem o "?key=" no final.
+        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
         String dataHoje = LocalDate.now().toString();
 
@@ -51,14 +53,16 @@ public class GeminiService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            // 2. Blindagem Máxima: A chave de API agora viaja escondida no Header
+            headers.set("x-goog-api-key", apiKey);
 
             HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
             RestTemplate restTemplate = new RestTemplate();
 
-            // A SOLUÇÃO: Converter a String para URI para impedir que o Java altere os dois pontos (:)
+            // Mantemos o URI para proteger os dois pontos (:) da URL
             URI uri = URI.create(urlString);
 
-            // Enviando o objeto URI em vez do texto puro
             ResponseEntity<String> response = restTemplate.postForEntity(uri, request, String.class);
             
             JsonNode rootNode = mapper.readTree(response.getBody());
