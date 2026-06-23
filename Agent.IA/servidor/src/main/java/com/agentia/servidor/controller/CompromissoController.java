@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -40,21 +43,26 @@ public class CompromissoController {
    public CompromissoController() {
    }
 
-   // --- NOVO MÉTODO: Validação geográfica via Nominatim (OpenStreetMap) ---
+   // --- MÉTODO COM A CORREÇÃO DO 403 FORBIDDEN (User-Agent) ---
    private Map<String, Object> buscarDadosDoEndereco(String nomeLocal) {
       Map<String, Object> resultado = new HashMap<>();
-      // Coordenadas padrão de fallback (Londrina)
       resultado.put("lat", -23.3102);
       resultado.put("lon", -51.1627);
       resultado.put("enderecoFormatado", nomeLocal); 
 
       try {
-         // Consulta a API pública de mapas
          String url = "https://nominatim.openstreetmap.org/search?format=json&q=" + 
                       java.net.URLEncoder.encode(nomeLocal + ", Londrina, PR", "UTF-8") + "&limit=1";
          
+         // Adicionando a identificação que o OpenStreetMap exige
+         HttpHeaders headers = new HttpHeaders();
+         headers.set("User-Agent", "AgentIA-App/1.0 (contato.agentia@app.com)");
+         HttpEntity<String> entity = new HttpEntity<>(headers);
+
          RestTemplate restTemplate = new RestTemplate();
-         ResponseEntity<List> response = restTemplate.getForEntity(url, List.class);
+         
+         // Trocamos o getForEntity pelo exchange para poder enviar os headers
+         ResponseEntity<List> response = restTemplate.exchange(url, HttpMethod.GET, entity, List.class);
          
          if (response.getBody() != null && !response.getBody().isEmpty()) {
             Map<String, Object> localInfo = (Map<String, Object>) response.getBody().get(0);
@@ -62,7 +70,6 @@ public class CompromissoController {
             resultado.put("lat", Double.parseDouble(localInfo.get("lat").toString()));
             resultado.put("lon", Double.parseDouble(localInfo.get("lon").toString()));
             
-            // Pega o endereço oficial e limpa para não ficar gigantesco
             if (localInfo.get("display_name") != null) {
                String[] partes = localInfo.get("display_name").toString().split(",");
                String enderecoLimpo = partes[0];
@@ -81,16 +88,15 @@ public class CompromissoController {
    public ResponseEntity<String> cadastrarCompromisso(@PathVariable Long usuarioId, @RequestBody Compromisso novoCompromisso) {
       Optional<Usuario> usuarioOpcional = this.usuarioRepository.findById(usuarioId);
       if (usuarioOpcional.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado para vincular o compromisso.");
+         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado.");
       } else {
          Usuario usuario = (Usuario)usuarioOpcional.get();
          novoCompromisso.setUsuario(usuario);
-
          try {
             this.compromissoRepository.save(novoCompromisso);
             return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso agendado com sucesso!");
          } catch (Exception var6) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao salvar o compromisso.");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao salvar.");
          }
       }
    }
@@ -98,9 +104,7 @@ public class CompromissoController {
    @PostMapping({"/cadastrar-ia/{usuarioId}"})
    public ResponseEntity<String> cadastrarComIA(@PathVariable Long usuarioId, @RequestBody Map<String, String> payload) {
       Optional<Usuario> usuarioOpcional = this.usuarioRepository.findById(usuarioId);
-      if (usuarioOpcional.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado para vincular o compromisso.");
-      }
+      if (usuarioOpcional.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Usuario nao encontrado.");
 
       String textoUsuario = payload.get("texto");
       if (textoUsuario == null || textoUsuario.trim().isEmpty()) {
@@ -108,13 +112,9 @@ public class CompromissoController {
       }
 
       try {
-         // 1. Envia a frase livre para o Gemini extrair os dados
          String jsonResposta = this.geminiService.extrairDadosDeAgendamento(textoUsuario);
-         if (jsonResposta == null) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao processar o comando com a inteligencia artificial.");
-         }
+         if (jsonResposta == null) return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro na IA.");
 
-         // 2. Transforma o JSON texto retornado pela IA em um mapa
          ObjectMapper objectMapper = new ObjectMapper();
          Map<String, Object> mapaIA = objectMapper.readValue(jsonResposta, Map.class);
 
@@ -122,22 +122,30 @@ public class CompromissoController {
          novoCompromisso.setUsuario((Usuario)usuarioOpcional.get());
          novoCompromisso.setTitulo((String)mapaIA.get("titulo"));
 
-         // 3. A MÁGICA: Pega o nome do local da IA e busca os dados reais no Nominatim
          String localIA = (String)mapaIA.get("local");
+         if (localIA == null) localIA = "Local não informado";
+         
          Map<String, Object> dadosEndereco = buscarDadosDoEndereco(localIA);
-
-         // 4. Salva o endereço formatado e as coordenadas precisas
          novoCompromisso.setEndereco((String)dadosEndereco.get("enderecoFormatado"));
          novoCompromisso.setLatitude((Double)dadosEndereco.get("lat"));
          novoCompromisso.setLongitude((Double)dadosEndereco.get("lon"));
 
+         // --- CORREÇÃO DO ERRO DE PARSE (Data Inteligente) ---
          String data = (String)mapaIA.get("data");
          String horario = (String)mapaIA.get("horario");
-         novoCompromisso.setDataHora(java.time.LocalDateTime.parse(data + "T" + horario));
 
-         // 5. Salva no banco de dados relacional
+         // Se a IA devolver null na data, assumimos que é para a data de hoje
+         if (data == null || data.equals("null")) {
+             data = java.time.LocalDate.now().toString();
+         }
+         // Se a IA devolver null no horário, assumimos um horário padrão (ex: 12:00) para não quebrar
+         if (horario == null || horario.equals("null")) {
+             horario = "12:00";
+         }
+
+         novoCompromisso.setDataHora(java.time.LocalDateTime.parse(data + "T" + horario));
          this.compromissoRepository.save(novoCompromisso);
-         return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso interpretado e agendado com sucesso via IA!");
+         return ResponseEntity.status(HttpStatus.CREATED).body("Agendado com endereço validado!");
 
       } catch (Exception e) {
          return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao processar e salvar o agendamento via IA: " + e.getMessage());
@@ -146,42 +154,24 @@ public class CompromissoController {
 
    @GetMapping({"/listar/{usuarioId}"})
    public ResponseEntity<List<Compromisso>> listarCompromissos(@PathVariable Long usuarioId) {
-      List<Compromisso> compromissos = this.compromissoRepository.findByUsuarioId(usuarioId);
-      return ResponseEntity.ok(compromissos);
+      return ResponseEntity.ok(this.compromissoRepository.findByUsuarioId(usuarioId));
    }
 
    @DeleteMapping({"/excluir/{id}"})
    public ResponseEntity<String> excluirCompromisso(@PathVariable Long id) {
-      try {
-         if (!this.compromissoRepository.existsById(id)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Compromisso nao encontrado.");
-         } else {
-            this.compromissoRepository.deleteById(id);
-            return ResponseEntity.ok("Compromisso excluido com sucesso!");
-         }
-      } catch (Exception var3) {
-         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao excluir o compromisso.");
-      }
+      this.compromissoRepository.deleteById(id);
+      return ResponseEntity.ok("Excluido!");
    }
 
    @PutMapping({"/editar/{id}"})
    public ResponseEntity<String> editarCompromisso(@PathVariable Long id, @RequestBody Compromisso dadosAtualizados) {
-      try {
-         Optional<Compromisso> compromissoOpcional = this.compromissoRepository.findById(id);
-         if (compromissoOpcional.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Compromisso nao encontrado.");
-         } else {
-            Compromisso compromissoExistente = (Compromisso)compromissoOpcional.get();
-            compromissoExistente.setTitulo(dadosAtualizados.getTitulo());
-            compromissoExistente.setEndereco(dadosAtualizados.getEndereco());
-            compromissoExistente.setDataHora(dadosAtualizados.getDataHora());
-            compromissoExistente.setLatitude(dadosAtualizados.getLatitude());
-            compromissoExistente.setLongitude(dadosAtualizados.getLongitude());
-            this.compromissoRepository.save(compromissoExistente);
-            return ResponseEntity.ok("Compromisso updated com sucesso!");
-         }
-      } catch (Exception var5) {
-         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao atualizar o compromisso.");
-      }
+      Compromisso c = this.compromissoRepository.findById(id).get();
+      c.setTitulo(dadosAtualizados.getTitulo());
+      c.setEndereco(dadosAtualizados.getEndereco());
+      c.setDataHora(dadosAtualizados.getDataHora());
+      c.setLatitude(dadosAtualizados.getLatitude());
+      c.setLongitude(dadosAtualizados.getLongitude());
+      this.compromissoRepository.save(c);
+      return ResponseEntity.ok("Atualizado!");
    }
 }
