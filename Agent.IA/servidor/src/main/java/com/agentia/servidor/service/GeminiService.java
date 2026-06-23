@@ -22,12 +22,11 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        // Rota atualizada para o modelo universal gemini-pro
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey;
+        // Alterado para a versao v1 oficial e estavel da API
+        String url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey;
 
         String dataHoje = LocalDate.now().toString();
 
-        // Instrucoes sem acentos para evitar problemas de encoding
         String instrucao = "Hoje e dia " + dataHoje + ". Voce e um extrator de dados de agendas. " +
                 "Analise o texto do usuario e retorne ESTRITAMENTE um objeto JSON valido. " +
                 "Nao inclua crases (```json), nem texto adicional. " +
