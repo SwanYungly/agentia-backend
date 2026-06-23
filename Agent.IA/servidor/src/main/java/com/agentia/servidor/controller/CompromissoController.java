@@ -11,9 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -41,7 +38,6 @@ public class CompromissoController {
    public CompromissoController() {
    }
 
-   // --- MÉTODO ESTÉTICO: Deixa a rua bonita caso tudo dê errado ---
    private String formatarNomeBonito(String texto) {
        if (texto == null || texto.isEmpty()) return texto;
        String[] palavras = texto.split("\\s+");
@@ -57,7 +53,7 @@ public class CompromissoController {
        return sb.toString().trim();
    }
 
-   // --- A MÁGICA: Busca Dupla e Disfarce de Navegador ---
+   // --- A SOLUÇÃO: API Photon (Komoot) que não bloqueia servidores em nuvem ---
    private Map<String, Object> buscarDadosDoEndereco(String nomeLocal) {
       Map<String, Object> resultado = new HashMap<>();
       resultado.put("lat", -23.3102);
@@ -66,7 +62,6 @@ public class CompromissoController {
       String ruaBusca = nomeLocal.replace(",", "").trim();
       String numeroExtraido = "";
 
-      // Separa o número do resto da rua
       int ultimoEspaco = ruaBusca.lastIndexOf(' ');
       if (ultimoEspaco != -1) {
          String possivelNumero = ruaBusca.substring(ultimoEspaco + 1);
@@ -81,53 +76,46 @@ public class CompromissoController {
       resultado.put("enderecoFormatado", enderecoFallback); 
 
       try {
+         // Consulta amigável para nuvem usando Photon API (baseada no mesmo mapa do Nominatim)
+         String query = java.net.URLEncoder.encode(ruaBusca + " Londrina", "UTF-8").replace("+", "%20");
+         String url = "https://photon.komoot.io/api/?q=" + query + "&limit=1";
+         
          RestTemplate restTemplate = new RestTemplate();
-         HttpHeaders headers = new HttpHeaders();
+         ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
          
-         // TRUQUE 1: Disfarçando o Java no Render para parecer um navegador Chrome real
-         headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-         headers.set("Accept", "application/json");
-         headers.set("Accept-Language", "pt-BR,pt;q=0.9");
-         HttpEntity<String> entity = new HttpEntity<>(headers);
-
-         // TRUQUE 2: Busca Estruturada (Obriga o mapa a corrigir pequenos erros e focar na rua)
-         String streetEncoded = java.net.URLEncoder.encode(ruaBusca, "UTF-8").replace("+", "%20");
-         String urlEstruturada = "https://nominatim.openstreetmap.org/search?format=json&street=" + streetEncoded + "&city=Londrina&state=PR&limit=1";
-         
-         ResponseEntity<List> response = restTemplate.exchange(urlEstruturada, HttpMethod.GET, entity, List.class);
-         List body = response.getBody();
-         
-         // TRUQUE 3: Se o mapa for chato e não achar na estruturada, tentamos a busca Genérica
-         if (body == null || body.isEmpty()) {
-             String qEncoded = java.net.URLEncoder.encode(ruaBusca + ", Londrina, PR", "UTF-8").replace("+", "%20");
-             String urlGenerica = "https://nominatim.openstreetmap.org/search?format=json&q=" + qEncoded + "&limit=1";
-             response = restTemplate.exchange(urlGenerica, HttpMethod.GET, entity, List.class);
-             body = response.getBody();
-         }
-
-         // Se achou em qualquer uma das tentativas, monta o endereço padrãozinho e exato
-         if (body != null && !body.isEmpty()) {
-            Map<String, Object> localInfo = (Map<String, Object>) body.get(0);
-            
-            resultado.put("lat", Double.parseDouble(localInfo.get("lat").toString()));
-            resultado.put("lon", Double.parseDouble(localInfo.get("lon").toString()));
-            
-            if (localInfo.get("display_name") != null) {
-               String[] partes = localInfo.get("display_name").toString().split(",");
-               String enderecoLimpo = partes[0].trim();
-               if (partes.length > 1) enderecoLimpo += ", " + partes[1].trim();
-               if (partes.length > 2) enderecoLimpo += ", " + partes[2].trim();
-               
-               if (!numeroExtraido.isEmpty()) {
-                   enderecoLimpo += ", Nº " + numeroExtraido;
-               }
-               resultado.put("enderecoFormatado", enderecoLimpo);
-            }
-         } else {
-             System.out.println("Aviso: O OpenStreetMap nao encontrou a rua: " + ruaBusca);
+         if (response.getBody() != null && response.getBody().containsKey("features")) {
+             List<Map<String, Object>> features = (List<Map<String, Object>>) response.getBody().get("features");
+             
+             if (!features.isEmpty()) {
+                 Map<String, Object> feature = features.get(0);
+                 Map<String, Object> geometry = (Map<String, Object>) feature.get("geometry");
+                 Map<String, Object> properties = (Map<String, Object>) feature.get("properties");
+                 
+                 List<Number> coordinates = (List<Number>) geometry.get("coordinates");
+                 
+                 // O Photon retorna a ordem inversa do Nominatim: [Longitude, Latitude]
+                 resultado.put("lon", coordinates.get(0).doubleValue());
+                 resultado.put("lat", coordinates.get(1).doubleValue());
+                 
+                 // Montando o endereço estruturado
+                 String nomeRua = properties.containsKey("name") ? properties.get("name").toString() : formatarNomeBonito(ruaBusca);
+                 String bairro = properties.containsKey("district") ? properties.get("district").toString() : "";
+                 String cidade = properties.containsKey("city") ? properties.get("city").toString() : "Londrina";
+                 
+                 String enderecoLimpo = nomeRua;
+                 if (!bairro.isEmpty()) enderecoLimpo += ", " + bairro;
+                 enderecoLimpo += ", " + cidade;
+                 
+                 if (!numeroExtraido.isEmpty()) {
+                     enderecoLimpo += ", Nº " + numeroExtraido;
+                 }
+                 resultado.put("enderecoFormatado", enderecoLimpo);
+             } else {
+                 System.out.println("Aviso: O Photon nao encontrou a rua: " + ruaBusca);
+             }
          }
       } catch (Exception e) {
-         System.out.println("Erro na busca do Nominatim: " + e.getMessage());
+         System.out.println("Erro na integracao com Photon: " + e.getMessage());
       }
       return resultado;
    }
