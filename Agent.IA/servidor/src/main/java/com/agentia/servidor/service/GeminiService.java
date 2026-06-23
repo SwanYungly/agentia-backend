@@ -22,8 +22,8 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        // Alterado para a versao v1 oficial e estavel da API
-        String url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+        // Restaurando a URL original e correta que causou o 401 (agora que a chave funciona)
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
 
         String dataHoje = LocalDate.now().toString();
 
