@@ -73,7 +73,7 @@ public class CompromissoController {
          }
       }
 
-      // O GRANDE SEGREDO: Arrancar prefixos com Regex para achar o nome real na base de dados
+      // Remove prefixos para a primeira tentativa de busca (aumenta a chance de acerto)
       String ruaLimpa = ruaBusca.replaceAll("(?i)^(rua|avenida|av\\.?|travessa|alameda|rodovia)\\s+", "").trim();
 
       String enderecoFallback = formatarNomeBonito(ruaBusca);
@@ -83,21 +83,21 @@ public class CompromissoController {
       try {
          RestTemplate restTemplate = new RestTemplate();
          HttpHeaders headers = new HttpHeaders();
-         // Identificação honesta e válida para o Nominatim não bloquear
-         headers.set("User-Agent", "AgentIA-App/3.0 (estudante@agentia.com)");
+         headers.set("User-Agent", "AgentIA-App/Final (estudante@agentia.com)");
          headers.set("Accept-Language", "pt-BR");
          HttpEntity<String> entity = new HttpEntity<>(headers);
 
-         // TENTATIVA 1: Busca pelo nome limpo (Ex: "David Santos Filho, Londrina, PR")
-         String q1 = java.net.URLEncoder.encode(ruaLimpa + ", Londrina, PR", "UTF-8");
-         String url1 = "https://nominatim.openstreetmap.org/search?format=json&q=" + q1 + "&limit=1";
-         ResponseEntity<List> response = restTemplate.exchange(url1, HttpMethod.GET, entity, List.class);
+         // A MÁGICA REAL: Deixar o Spring lidar com o texto puro usando o placeholder {q}
+         String url = "https://nominatim.openstreetmap.org/search?format=json&q={q}&limit=1";
+
+         // TENTATIVA 1: Nome da rua limpo + Cidade
+         String queryBusca = ruaLimpa + ", Londrina, PR";
+         ResponseEntity<List> response = restTemplate.exchange(url, HttpMethod.GET, entity, List.class, queryBusca);
          
-         // TENTATIVA 2: Se falhar, busca com o prefixo que a IA mandou
+         // TENTATIVA 2: Se não achar, tenta com o nome completo que a IA deu
          if (response.getBody() == null || response.getBody().isEmpty()) {
-             String q2 = java.net.URLEncoder.encode(ruaBusca + ", Londrina, PR", "UTF-8");
-             String url2 = "https://nominatim.openstreetmap.org/search?format=json&q=" + q2 + "&limit=1";
-             response = restTemplate.exchange(url2, HttpMethod.GET, entity, List.class);
+             queryBusca = ruaBusca + ", Londrina, PR";
+             response = restTemplate.exchange(url, HttpMethod.GET, entity, List.class, queryBusca);
          }
 
          if (response.getBody() != null && !response.getBody().isEmpty()) {
@@ -117,6 +117,8 @@ public class CompromissoController {
                }
                resultado.put("enderecoFormatado", enderecoLimpo);
             }
+         } else {
+             System.out.println("Nominatim não encontrou nada para: " + queryBusca);
          }
       } catch (Exception e) {
          System.out.println("Erro na busca do Nominatim: " + e.getMessage());
