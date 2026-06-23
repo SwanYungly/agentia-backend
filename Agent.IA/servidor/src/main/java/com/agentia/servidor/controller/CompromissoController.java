@@ -5,7 +5,9 @@ import com.agentia.servidor.model.Usuario;
 import com.agentia.servidor.repository.CompromissoRepository;
 import com.agentia.servidor.repository.UsuarioRepository;
 import com.agentia.servidor.service.GeminiService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,12 +23,11 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
 
 @RestController
 @RequestMapping({"/api/compromissos"})
-@CrossOrigin(
-   origins = {"*"}
-)
+@CrossOrigin(origins = {"*"})
 public class CompromissoController {
    @Autowired
    private CompromissoRepository compromissoRepository;
@@ -35,79 +36,90 @@ public class CompromissoController {
    @Autowired
    private GeminiService geminiService;
 
-   public CompromissoController() {
-   }
-
-   @PostMapping({"/cadastrar/{usuarioId}"})
-   public ResponseEntity<String> cadastrarCompromisso(@PathVariable Long usuarioId, @RequestBody Compromisso novoCompromisso) {
-      Optional<Usuario> usuarioOpcional = this.usuarioRepository.findById(usuarioId);
-      if (usuarioOpcional.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado para vincular o compromisso.");
-      } else {
-         Usuario usuario = (Usuario)usuarioOpcional.get();
-         novoCompromisso.setUsuario(usuario);
-
-         try {
-            this.compromissoRepository.save(novoCompromisso);
-            return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso agendado com sucesso!");
-         } catch (Exception var6) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao salvar o compromisso.");
-         }
-      }
+   @GetMapping({"/usuario/{usuarioId}"})
+   public ResponseEntity<List<Compromisso>> listarPorUsuario(@PathVariable Long usuarioId) {
+      List<Compromisso> lista = this.compromissoRepository.findByUsuarioId(usuarioId);
+      return ResponseEntity.ok(lista);
    }
 
    @PostMapping({"/cadastrar-ia/{usuarioId}"})
    public ResponseEntity<String> cadastrarComIA(@PathVariable Long usuarioId, @RequestBody Map<String, String> payload) {
-      Optional<Usuario> usuarioOpcional = this.usuarioRepository.findById(usuarioId);
-      if (usuarioOpcional.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado para vincular o compromisso.");
-      }
+      String textoUsuario = (String)payload.get("mensagem");
+      if (textoUsuario != null && !textoUsuario.trim().isEmpty()) {
+         Optional<Usuario> usuarioOpcional = this.usuarioRepository.findById(usuarioId);
+         if (usuarioOpcional.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado.");
+         } else {
+            try {
+               String jsonResposta = this.geminiService.extrairDadosDeAgendamento(textoUsuario);
+               if (jsonResposta == null) {
+                  return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao processar com a IA.");
+               } else {
+                  ObjectMapper objectMapper = new ObjectMapper();
+                  Map<String, Object> mapaIA = (Map)objectMapper.readValue(jsonResposta, Map.class);
+                  
+                  Compromisso novoCompromisso = new Compromisso();
+                  novoCompromisso.setUsuario((Usuario)usuarioOpcional.get());
+                  novoCompromisso.setTitulo((String)mapaIA.get("titulo"));
+                  
+                  String localExtraido = (String)mapaIA.get("local");
+                  novoCompromisso.setEndereco(localExtraido);
+                  
+                  String data = (String)mapaIA.get("data");
+                  String horario = (String)mapaIA.get("horario");
+                  novoCompromisso.setDataHora(java.time.LocalDateTime.parse(data + "T" + horario));
 
-      String textoUsuario = payload.get("texto");
-      if (textoUsuario == null || textoUsuario.trim().isEmpty()) {
-         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erro: O texto enviado nao pode estar vazio.");
-      }
+                  // --- CORREÇÃO AQUI: BUSCA AS COORDENADAS VIA API ---
+                  double[] coordenadas = buscarCoordenadasNoNominatim(localExtraido);
+                  novoCompromisso.setLatitude(coordenadas[0]);
+                  novoCompromisso.setLongitude(coordenadas[1]);
 
-      try {
-         // 1. Envia a frase livre para o Gemini extrair os dados em formato JSON
-         String jsonResposta = this.geminiService.extrairDadosDeAgendamento(textoUsuario);
-         if (jsonResposta == null) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao processar o comando com a inteligencia artificial.");
+                  this.compromissoRepository.save(novoCompromisso);
+                  return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso interpretado e agendado com sucesso via IA!");
+               }
+            } catch (Exception var12) {
+               return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao salvar: " + var12.getMessage());
+            }
          }
-
-         // 2. Transforma o JSON texto retornado pela IA em um mapa de chaves e valores
-         ObjectMapper objectMapper = new ObjectMapper();
-         Map<String, Object> mapaIA = objectMapper.readValue(jsonResposta, Map.class);
-
-         // 3. Constroi o objeto Compromisso mapeando os campos extraidos
-         Compromisso novoCompromisso = new Compromisso();
-         novoCompromisso.setUsuario((Usuario)usuarioOpcional.get());
-         novoCompromisso.setTitulo((String)mapaIA.get("titulo"));
-         novoCompromisso.setEndereco((String)mapaIA.get("local"));
-
-         String data = (String)mapaIA.get("data");
-         String horario = (String)mapaIA.get("horario");
-
-         // 4. Junta e converte os valores de data e hora para salvar no formato LocalDateTime esperado pelo banco
-         novoCompromisso.setDataHora(java.time.LocalDateTime.parse(data + "T" + horario));
-
-         // 5. Adiciona coordenadas padrao para o banco aceitar o salvamento
-         novoCompromisso.setLatitude(-23.3102);
-         novoCompromisso.setLongitude(-51.1627);
-
-         // 6. Salva definitivamente no banco de dados relacional
-         this.compromissoRepository.save(novoCompromisso);
-         return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso interpretado e agendado com sucesso via IA!");
-
-      } catch (Exception e) {
-         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao processar e salvar o agendamento via IA: " + e.getMessage());
+      } else {
+         return ResponseEntity.badRequest().body("Erro: O texto nao pode estar vazio.");
       }
    }
 
-   @GetMapping({"/listar/{usuarioId}"})
-   public ResponseEntity<List<Compromisso>> listarCompromissos(@PathVariable Long usuarioId) {
-      List<Compromisso> compromissos = this.compromissoRepository.findByUsuarioId(usuarioId);
-      return ResponseEntity.ok(compromissos);
+   // --- NOVO MÉTODO AUXILIAR (IGUAL AO SEU FRONT-END) ---
+   private double[] buscarCoordenadasNoNominatim(String endereco) {
+      // Coordenadas fallback padrão (Londrina) caso o endereço não seja encontrado
+      double[] fallback = {-23.3102, -51.1627};
+      
+      if (endereco == null || endereco.trim().isEmpty()) {
+         return fallback;
+      }
+
+      try {
+         // Trata espaços em branco e caracteres especiais para a URL
+         String enderecoFormatado = endereco.replace(" ", "+");
+         String urlString = "https://nominatim.openstreetmap.org/search?format=json&q=" + enderecoFormatado + "&limit=1";
+         
+         RestTemplate restTemplate = new RestTemplate();
+         // Definimos como URI para evitar problemas com formatação de caracteres especiais
+         URI uri = URI.create(urlString);
+         
+         ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
+         
+         ObjectMapper mapper = new ObjectMapper();
+         JsonNode root = mapper.readTree(response.getBody());
+
+         // Se a API do OpenStreetMap retornou algum resultado válido
+         if (root.isArray() && root.size() > 0) {
+            double lat = root.get(0).path("lat").asDouble();
+            double lon = root.get(0).path("lon").asDouble();
+            return new double[]{lat, lon};
+         }
+      } catch (Exception e) {
+         System.out.println("Falha ao geolocalizar endereço via Java: " + e.getMessage());
+      }
+      
+      return fallback;
    }
 
    @DeleteMapping({"/excluir/{id}"})
