@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -53,7 +56,6 @@ public class CompromissoController {
        return sb.toString().trim();
    }
 
-   // --- A SOLUÇÃO: API Photon (Komoot) que não bloqueia servidores em nuvem ---
    private Map<String, Object> buscarDadosDoEndereco(String nomeLocal) {
       Map<String, Object> resultado = new HashMap<>();
       resultado.put("lat", -23.3102);
@@ -71,51 +73,53 @@ public class CompromissoController {
          }
       }
 
+      // O GRANDE SEGREDO: Arrancar prefixos com Regex para achar o nome real na base de dados
+      String ruaLimpa = ruaBusca.replaceAll("(?i)^(rua|avenida|av\\.?|travessa|alameda|rodovia)\\s+", "").trim();
+
       String enderecoFallback = formatarNomeBonito(ruaBusca);
       if (!numeroExtraido.isEmpty()) enderecoFallback += " " + numeroExtraido;
       resultado.put("enderecoFormatado", enderecoFallback); 
 
       try {
-         // Consulta amigável para nuvem usando Photon API (baseada no mesmo mapa do Nominatim)
-         String query = java.net.URLEncoder.encode(ruaBusca + " Londrina", "UTF-8").replace("+", "%20");
-         String url = "https://photon.komoot.io/api/?q=" + query + "&limit=1";
-         
          RestTemplate restTemplate = new RestTemplate();
-         ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+         HttpHeaders headers = new HttpHeaders();
+         // Identificação honesta e válida para o Nominatim não bloquear
+         headers.set("User-Agent", "AgentIA-App/3.0 (estudante@agentia.com)");
+         headers.set("Accept-Language", "pt-BR");
+         HttpEntity<String> entity = new HttpEntity<>(headers);
+
+         // TENTATIVA 1: Busca pelo nome limpo (Ex: "David Santos Filho, Londrina, PR")
+         String q1 = java.net.URLEncoder.encode(ruaLimpa + ", Londrina, PR", "UTF-8");
+         String url1 = "https://nominatim.openstreetmap.org/search?format=json&q=" + q1 + "&limit=1";
+         ResponseEntity<List> response = restTemplate.exchange(url1, HttpMethod.GET, entity, List.class);
          
-         if (response.getBody() != null && response.getBody().containsKey("features")) {
-             List<Map<String, Object>> features = (List<Map<String, Object>>) response.getBody().get("features");
-             
-             if (!features.isEmpty()) {
-                 Map<String, Object> feature = features.get(0);
-                 Map<String, Object> geometry = (Map<String, Object>) feature.get("geometry");
-                 Map<String, Object> properties = (Map<String, Object>) feature.get("properties");
-                 
-                 List<Number> coordinates = (List<Number>) geometry.get("coordinates");
-                 
-                 // O Photon retorna a ordem inversa do Nominatim: [Longitude, Latitude]
-                 resultado.put("lon", coordinates.get(0).doubleValue());
-                 resultado.put("lat", coordinates.get(1).doubleValue());
-                 
-                 // Montando o endereço estruturado
-                 String nomeRua = properties.containsKey("name") ? properties.get("name").toString() : formatarNomeBonito(ruaBusca);
-                 String bairro = properties.containsKey("district") ? properties.get("district").toString() : "";
-                 String cidade = properties.containsKey("city") ? properties.get("city").toString() : "Londrina";
-                 
-                 String enderecoLimpo = nomeRua;
-                 if (!bairro.isEmpty()) enderecoLimpo += ", " + bairro;
-                 enderecoLimpo += ", " + cidade;
-                 
-                 if (!numeroExtraido.isEmpty()) {
-                     enderecoLimpo += ", Nº " + numeroExtraido;
-                 }
-                 resultado.put("enderecoFormatado", enderecoLimpo);
-             } else {
-                 System.out.println("Aviso: O Photon nao encontrou a rua: " + ruaBusca);
-             }
+         // TENTATIVA 2: Se falhar, busca com o prefixo que a IA mandou
+         if (response.getBody() == null || response.getBody().isEmpty()) {
+             String q2 = java.net.URLEncoder.encode(ruaBusca + ", Londrina, PR", "UTF-8");
+             String url2 = "https://nominatim.openstreetmap.org/search?format=json&q=" + q2 + "&limit=1";
+             response = restTemplate.exchange(url2, HttpMethod.GET, entity, List.class);
+         }
+
+         if (response.getBody() != null && !response.getBody().isEmpty()) {
+            Map<String, Object> localInfo = (Map<String, Object>) response.getBody().get(0);
+            
+            resultado.put("lat", Double.parseDouble(localInfo.get("lat").toString()));
+            resultado.put("lon", Double.parseDouble(localInfo.get("lon").toString()));
+            
+            if (localInfo.get("display_name") != null) {
+               String[] partes = localInfo.get("display_name").toString().split(",");
+               String enderecoLimpo = partes[0].trim();
+               if (partes.length > 1) enderecoLimpo += ", " + partes[1].trim();
+               if (partes.length > 2) enderecoLimpo += ", " + partes[2].trim();
+               
+               if (!numeroExtraido.isEmpty()) {
+                   enderecoLimpo += ", Nº " + numeroExtraido;
+               }
+               resultado.put("enderecoFormatado", enderecoLimpo);
+            }
          }
       } catch (Exception e) {
-         System.out.println("Erro na integracao com Photon: " + e.getMessage());
+         System.out.println("Erro na busca do Nominatim: " + e.getMessage());
       }
       return resultado;
    }
@@ -123,18 +127,11 @@ public class CompromissoController {
    @PostMapping({"/cadastrar/{usuarioId}"})
    public ResponseEntity<String> cadastrarCompromisso(@PathVariable Long usuarioId, @RequestBody Compromisso novoCompromisso) {
       Optional<Usuario> usuarioOpcional = this.usuarioRepository.findById(usuarioId);
-      if (usuarioOpcional.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado.");
-      } else {
-         Usuario usuario = (Usuario)usuarioOpcional.get();
-         novoCompromisso.setUsuario(usuario);
-         try {
-            this.compromissoRepository.save(novoCompromisso);
-            return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso agendado com sucesso!");
-         } catch (Exception var6) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao salvar.");
-         }
-      }
+      if (usuarioOpcional.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Erro: Usuario nao encontrado.");
+      Usuario usuario = (Usuario)usuarioOpcional.get();
+      novoCompromisso.setUsuario(usuario);
+      this.compromissoRepository.save(novoCompromisso);
+      return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso agendado com sucesso!");
    }
 
    @PostMapping({"/cadastrar-ia/{usuarioId}"})
@@ -143,9 +140,7 @@ public class CompromissoController {
       if (usuarioOpcional.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Usuario nao encontrado.");
 
       String textoUsuario = payload.get("texto");
-      if (textoUsuario == null || textoUsuario.trim().isEmpty()) {
-         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erro: O texto enviado nao pode estar vazio.");
-      }
+      if (textoUsuario == null || textoUsuario.trim().isEmpty()) return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Texto vazio.");
 
       try {
          String jsonResposta = this.geminiService.extrairDadosDeAgendamento(textoUsuario);
@@ -177,7 +172,7 @@ public class CompromissoController {
          return ResponseEntity.status(HttpStatus.CREATED).body("Agendado com endereço validado!");
 
       } catch (Exception e) {
-         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao processar e salvar o agendamento via IA: " + e.getMessage());
+         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro via IA: " + e.getMessage());
       }
    }
 
