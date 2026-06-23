@@ -23,17 +23,20 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        // 1. Atualizado para o modelo 2.5-flash, pois as versões 1.5 foram aposentadas pelo Google.
-        // Note que a URL agora está limpa, sem o "?key=" no final.
         String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
         String dataHoje = LocalDate.now().toString();
 
+        // --- ENGENHARIA DE PROMPT: Regras estritas para a limpeza do endereço ---
         String instrucao = "Hoje e dia " + dataHoje + ". Voce e um extrator de dados de agendas. " +
                 "Analise o texto do usuario e retorne ESTRITAMENTE um objeto JSON valido. " +
                 "Nao inclua crases (```json), nem texto adicional. " +
                 "O JSON deve ter exatamente estas chaves: " +
                 "'titulo' (string), 'data' (formato YYYY-MM-DD), 'horario' (formato HH:MM), 'local' (string). " +
+                "REGRAS PARA O LOCAL: Extraia apenas o nome oficial da rua/avenida e o numero. " +
+                "NUNCA inclua preposicoes (na, no, em), nem o nome do lugar ou da pessoa. " +
+                "Exemplo: se o texto for 'role na casa da ada na rua david santos filho 121', " +
+                "o valor de 'local' deve ser ESTRITAMENTE 'Rua David Santos Filho 121'. " +
                 "Se alguma informacao faltar, deixe o valor como null. " +
                 "Texto do usuario: " + textoUsuario;
 
@@ -53,14 +56,11 @@ public class GeminiService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            // 2. Blindagem Máxima: A chave de API agora viaja escondida no Header
             headers.set("x-goog-api-key", apiKey);
 
             HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
             RestTemplate restTemplate = new RestTemplate();
 
-            // Mantemos o URI para proteger os dois pontos (:) da URL
             URI uri = URI.create(urlString);
 
             ResponseEntity<String> response = restTemplate.postForEntity(uri, request, String.class);
