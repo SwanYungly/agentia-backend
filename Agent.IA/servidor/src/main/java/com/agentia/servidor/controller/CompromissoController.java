@@ -91,7 +91,11 @@ public class CompromissoController {
          // 4. Junta e converte os valores de data e hora para salvar no formato LocalDateTime esperado pelo banco
          novoCompromisso.setDataHora(java.time.LocalDateTime.parse(data + "T" + horario));
 
-         // 5. Salva definitivamente no banco de dados relacional
+         // 5. Adiciona coordenadas padrao para o banco aceitar o salvamento
+         novoCompromisso.setLatitude(-23.3102);
+         novoCompromisso.setLongitude(-51.1627);
+
+         // 6. Salva definitivamente no banco de dados relacional
          this.compromissoRepository.save(novoCompromisso);
          return ResponseEntity.status(HttpStatus.CREATED).body("Compromisso interpretado e agendado com sucesso via IA!");
 
