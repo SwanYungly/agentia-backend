@@ -25,7 +25,7 @@ public class GeminiService {
     public String extrairDadosDeAgendamento(String textoUsuario) {
         
         // A SOLUÇÃO DEFINITIVA: Gemini 2.0 Flash (Ativo, estável e com 1.500 requisições/dia)
-        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
         String dataHoje = LocalDate.now().toString();
 
