@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -22,8 +23,7 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        // Restaurando a URL original e correta que causou o 401 (agora que a chave funciona)
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
 
         String dataHoje = LocalDate.now().toString();
 
@@ -55,7 +55,11 @@ public class GeminiService {
             HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
             RestTemplate restTemplate = new RestTemplate();
 
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            // A SOLUÇÃO: Converter a String para URI para impedir que o Java altere os dois pontos (:)
+            URI uri = URI.create(urlString);
+
+            // Enviando o objeto URI em vez do texto puro
+            ResponseEntity<String> response = restTemplate.postForEntity(uri, request, String.class);
             
             JsonNode rootNode = mapper.readTree(response.getBody());
             String textoPuroIA = rootNode.path("candidates").get(0)
