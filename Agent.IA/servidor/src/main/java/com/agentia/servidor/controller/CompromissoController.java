@@ -43,25 +43,38 @@ public class CompromissoController {
    public CompromissoController() {
    }
 
-   // --- MÉTODO COM A CORREÇÃO DO 403 FORBIDDEN (User-Agent) ---
+   // --- MÉTODO ATUALIZADO: Tratamento de números para garantir o match no Nominatim ---
    private Map<String, Object> buscarDadosDoEndereco(String nomeLocal) {
       Map<String, Object> resultado = new HashMap<>();
       resultado.put("lat", -23.3102);
       resultado.put("lon", -51.1627);
       resultado.put("enderecoFormatado", nomeLocal); 
 
+      // 1. Limpa o texto enviado pela IA (remove vírgulas caso o usuário tenha digitado)
+      String ruaBusca = nomeLocal.replace(",", "").trim();
+      String numeroExtraido = "";
+
+      // 2. Tenta separar o número da rua (exatamente como fazemos no Front-End)
+      int ultimoEspaco = ruaBusca.lastIndexOf(' ');
+      if (ultimoEspaco != -1) {
+         String possivelNumero = ruaBusca.substring(ultimoEspaco + 1);
+         // Se a última palavra for composta apenas por números, nós a guardamos
+         if (possivelNumero.matches("\\d+")) {
+            numeroExtraido = possivelNumero;
+            ruaBusca = ruaBusca.substring(0, ultimoEspaco).trim();
+         }
+      }
+
       try {
+         // 3. Busca APENAS pelo nome da rua para o Nominatim encontrar com facilidade
          String url = "https://nominatim.openstreetmap.org/search?format=json&q=" + 
-                      java.net.URLEncoder.encode(nomeLocal + ", Londrina, PR", "UTF-8") + "&limit=1";
+                      java.net.URLEncoder.encode(ruaBusca + ", Londrina, PR", "UTF-8") + "&limit=1";
          
-         // Adicionando a identificação que o OpenStreetMap exige
          HttpHeaders headers = new HttpHeaders();
          headers.set("User-Agent", "AgentIA-App/1.0 (contato.agentia@app.com)");
          HttpEntity<String> entity = new HttpEntity<>(headers);
 
          RestTemplate restTemplate = new RestTemplate();
-         
-         // Trocamos o getForEntity pelo exchange para poder enviar os headers
          ResponseEntity<List> response = restTemplate.exchange(url, HttpMethod.GET, entity, List.class);
          
          if (response.getBody() != null && !response.getBody().isEmpty()) {
@@ -70,12 +83,19 @@ public class CompromissoController {
             resultado.put("lat", Double.parseDouble(localInfo.get("lat").toString()));
             resultado.put("lon", Double.parseDouble(localInfo.get("lon").toString()));
             
+            // 4. Pega o endereço oficial, limpa e adiciona o número de volta no formato bonito
             if (localInfo.get("display_name") != null) {
                String[] partes = localInfo.get("display_name").toString().split(",");
                String enderecoLimpo = partes[0];
                if (partes.length > 1) enderecoLimpo += "," + partes[1];
                if (partes.length > 2) enderecoLimpo += "," + partes[2];
-               resultado.put("enderecoFormatado", enderecoLimpo.trim());
+               
+               enderecoLimpo = enderecoLimpo.trim();
+               if (!numeroExtraido.isEmpty()) {
+                   enderecoLimpo += ", Nº " + numeroExtraido;
+               }
+               
+               resultado.put("enderecoFormatado", enderecoLimpo);
             }
          }
       } catch (Exception e) {
@@ -130,18 +150,11 @@ public class CompromissoController {
          novoCompromisso.setLatitude((Double)dadosEndereco.get("lat"));
          novoCompromisso.setLongitude((Double)dadosEndereco.get("lon"));
 
-         // --- CORREÇÃO DO ERRO DE PARSE (Data Inteligente) ---
          String data = (String)mapaIA.get("data");
          String horario = (String)mapaIA.get("horario");
 
-         // Se a IA devolver null na data, assumimos que é para a data de hoje
-         if (data == null || data.equals("null")) {
-             data = java.time.LocalDate.now().toString();
-         }
-         // Se a IA devolver null no horário, assumimos um horário padrão (ex: 12:00) para não quebrar
-         if (horario == null || horario.equals("null")) {
-             horario = "12:00";
-         }
+         if (data == null || data.equals("null")) data = java.time.LocalDate.now().toString();
+         if (horario == null || horario.equals("null")) horario = "12:00";
 
          novoCompromisso.setDataHora(java.time.LocalDateTime.parse(data + "T" + horario));
          this.compromissoRepository.save(novoCompromisso);
