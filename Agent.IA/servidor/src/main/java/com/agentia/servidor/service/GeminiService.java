@@ -23,11 +23,12 @@ public class GeminiService {
     private String apiKey;
 
     public String extrairDadosDeAgendamento(String textoUsuario) {
-        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+        
+        // A SOLUÇÃO: Retornando para a versão 1.5 Flash que possui cota de 1.500 requisições DIÁRIAS
+        String urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
         String dataHoje = LocalDate.now().toString();
 
-        // --- ENGENHARIA DE PROMPT: Regras estritas para a limpeza do endereço ---
         String instrucao = "Hoje e dia " + dataHoje + ". Voce e um extrator de dados de agendas. " +
                 "Analise o texto do usuario e retorne ESTRITAMENTE um objeto JSON valido. " +
                 "Nao inclua crases (```json), nem texto adicional. " +
