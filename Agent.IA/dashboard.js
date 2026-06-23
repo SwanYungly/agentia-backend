@@ -286,50 +286,93 @@ document.addEventListener('DOMContentLoaded', function() {
         modalEditarBS.show();
     };
 
-    // --- 6. CARREGAR E EXIBIR A AGENDA NO DASHBOARD ---
+    // --- 6. CARREGAR, FILTRAR E EXIBIR A AGENDA NO DASHBOARD ---
+    
+    // Captura o novo campo de calendário
+    const inputFiltroData = document.getElementById('filtro-data-agenda');
+    
+    // Injeta o dia de hoje automaticamente no calendário de filtro ao iniciar a tela
+    const hoje = new Date();
+    const dataHojeIso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
+    if(inputFiltroData) {
+        inputFiltroData.value = dataHojeIso;
+    }
+
+    // Listener: Quando o usuário escolhe outra data no calendário, a tela redesenha automaticamente
+    if(inputFiltroData) {
+        inputFiltroData.addEventListener('change', () => {
+            renderizarCompromissosFiltrados();
+        });
+    }
+
     function carregarCompromissos() {
         fetch(`https://agentia-api.onrender.com/api/compromissos/listar/${usuarioId}`)
         .then(resposta => resposta.json())
         .then(dados => {
+            // Ordena os compromissos pelo horário (mais cedo para mais tarde)
+            dados.sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
             listaCompromissosLocal = dados; 
-            const lista = document.getElementById('lista-compromissos');
-            lista.innerHTML = ''; 
-
-            if (dados.length === 0) {
-                lista.innerHTML = '<div class="text-center p-4 text-muted">Você ainda não tem compromissos agendados.</div>';
-                return;
-            }
-
-            dados.forEach(comp => {
-                const dataObj = new Date(comp.dataHora);
-                const horaFormatada = dataObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                
-                const idAviso = `aviso-${comp.id}`;
-
-                const itemHTML = `
-                    <div class="list-group-item list-group-item-action py-3 border-bottom d-flex justify-content-between align-items-center">
-                        <div class="flex-grow-1 me-2" style="cursor: pointer;" onclick="visualizarDetalhesCompromisso(${comp.id})">
-                            <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1 fw-bold">${comp.titulo}</h6>
-                                <small class="text-primary fw-bold">${horaFormatada}</small>
-                            </div>
-                            <p class="mb-1 text-muted small text-truncate">${comp.endereco}</p>
-                            <small id="${idAviso}" class="text-secondary small">Calculando rota...</small>
-                        </div>
-                        <div class="d-flex gap-1">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="abrirModalEdicaoDireta(${comp.id})" title="Editar"><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="excluirCompromissoChamada(${comp.id})" title="Excluir"><i class="bi bi-trash"></i></button>
-                        </div>
-                    </div>
-                `;
-                
-                lista.insertAdjacentHTML('beforeend', itemHTML);
-                calcularTempoViagem(comp.latitude, comp.longitude, comp.dataHora, idAviso);
-            });
+            
+            // Chama a nova função de renderização que aplica o filtro de data
+            renderizarCompromissosFiltrados();
         })
         .catch(erro => console.error("Erro ao carregar agenda:", erro));
     }
 
+    function renderizarCompromissosFiltrados() {
+        const lista = document.getElementById('lista-compromissos');
+        const dataSelecionada = inputFiltroData ? inputFiltroData.value : dataHojeIso;
+        const tituloAgenda = document.getElementById('titulo-agenda');
+        
+        lista.innerHTML = ''; 
+
+        // Muda o título dinamicamente para não confundir o usuário
+        if (tituloAgenda) {
+            if (dataSelecionada === dataHojeIso) {
+                tituloAgenda.innerHTML = `<i class="bi bi-calendar2-week me-2"></i>Agenda de Hoje`;
+            } else {
+                const [ano, mes, dia] = dataSelecionada.split('-');
+                tituloAgenda.innerHTML = `<i class="bi bi-calendar-event me-2"></i>Dia ${dia}/${mes}`;
+            }
+        }
+
+        // Filtra a lista mestra mantendo apenas os que "começam" com a data escolhida no calendário
+        const compromissosDoDia = listaCompromissosLocal.filter(comp => comp.dataHora.startsWith(dataSelecionada));
+
+        if (compromissosDoDia.length === 0) {
+            lista.innerHTML = '<div class="text-center p-4 text-muted">Você não tem compromissos agendados para este dia.</div>';
+            return;
+        }
+
+        compromissosDoDia.forEach(comp => {
+            const dataObj = new Date(comp.dataHora);
+            const horaFormatada = dataObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            
+            const idAviso = `aviso-${comp.id}`;
+
+            const itemHTML = `
+                <div class="list-group-item list-group-item-action py-3 border-bottom d-flex justify-content-between align-items-center">
+                    <div class="flex-grow-1 me-2" style="cursor: pointer;" onclick="visualizarDetalhesCompromisso(${comp.id})">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1 fw-bold">${comp.titulo}</h6>
+                            <small class="text-primary fw-bold">${horaFormatada}</small>
+                        </div>
+                        <p class="mb-1 text-muted small text-truncate">${comp.endereco}</p>
+                        <small id="${idAviso}" class="text-secondary small">Calculando rota...</small>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="abrirModalEdicaoDireta(${comp.id})" title="Editar"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="excluirCompromissoChamada(${comp.id})" title="Excluir"><i class="bi bi-trash"></i></button>
+                    </div>
+                </div>
+            `;
+            
+            lista.insertAdjacentHTML('beforeend', itemHTML);
+            calcularTempoViagem(comp.latitude, comp.longitude, comp.dataHora, idAviso);
+        });
+    }
+
+    // Dispara a carga inicial
     carregarCompromissos();
 
     // --- 7. AUTOCOMPLETAR REUTILIZÁVEL ---
@@ -363,6 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const ultimoEspaco = ruaBusca.lastIndexOf(' ');
             if (ultimoEspaco !== -1) {
                 const possivelNumero = ruaBusca.substring(ultimoEspaco + 1);
+                // Se a última palavra for composta apenas por números, nós a guardamos
                 if (/^\d+$/.test(possivelNumero)) { 
                     numeroExtraido = possivelNumero;
                     ruaBusca = ruaBusca.substring(0, ultimoEspaco).trim();
@@ -546,10 +590,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 divIaFinal.innerHTML = `<div class="bg-success text-white p-3 rounded-3 shadow-sm d-inline-block"><i class="bi bi-check-circle-fill me-2"></i>Compromisso identificado e agendado com sucesso! Já atualizei sua lista.</div>`;
                 chatWindow.appendChild(divIaFinal);
                 
-                // Recarrega a lista lateral para o usuário ver o novo agendamento
+                // Recarrega a lista lateral e aplica o filtro selecionado
                 carregarCompromissos();
             } else {
-                // Erro: A IA pode não ter encontrado todos os dados na frase (ex: faltou a hora)
+                // Erro: A IA pode não ter encontrado todos os dados na frase
                 const textoErro = await resposta.text();
                 divIaFinal.innerHTML = `<div class="bg-danger text-white p-3 rounded-3 shadow-sm d-inline-block"><i class="bi bi-exclamation-triangle-fill me-2"></i>Ops, não consegui agendar. ${textoErro} <br><small>Dica: Tente incluir o título, a data, a hora e o local na frase.</small></div>`;
                 chatWindow.appendChild(divIaFinal);
